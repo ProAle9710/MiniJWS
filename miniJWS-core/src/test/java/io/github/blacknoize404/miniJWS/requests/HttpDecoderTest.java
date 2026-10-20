@@ -104,6 +104,30 @@ class HttpDecoderTest {
     }
 
     @Test
+    void decode_invalidChunkSize_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\nZZZ\r\nHello\r\n0\r\n\r\n";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_truncatedChunk_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHel";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_chunkMissingCrlf_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHelloXX0\r\n\r\n";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_oversizedChunk_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\nA00001\r\n";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
     void decode_chunkedWithExtensions() {
         var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\n5;ext=1\r\nHello\r\n0\r\n\r\n";
         var result = HttpDecoder.decode(toStream(raw));
