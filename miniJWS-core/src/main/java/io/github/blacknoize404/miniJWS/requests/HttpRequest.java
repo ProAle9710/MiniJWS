@@ -24,10 +24,21 @@ public class HttpRequest {
         this.httpMethod = method;
         this.uri = uri;
         this.protocolVersion = protocolVersion;
-        this.headers = headers;
+        this.headers = normalizeHeaders(headers);
         this.parameters = parameters;
-        this.cookies = parseCookies(headers);
+        this.cookies = parseCookies(this.headers);
         this.body = body;
+    }
+
+    private static Map<String, List<String>> normalizeHeaders(Map<String, List<String>> headers) {
+        Map<String, List<String>> normalized = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        if (headers != null) {
+            headers.forEach((k, v) -> normalized.merge(k, new ArrayList<>(v), (a, b) -> {
+                a.addAll(b);
+                return a;
+            }));
+        }
+        return normalized;
     }
 
     public URI getUri() { return uri; }

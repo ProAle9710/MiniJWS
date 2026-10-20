@@ -62,6 +62,20 @@ class HttpRequestTest {
     }
 
     @Test
+    void getHeader_isCaseInsensitive() {
+        var req = baseBuilder().setHeaders(Map.of("Content-Type", List.of("text/html"))).build();
+        assertEquals("text/html", req.getHeader("content-type").orElse(""));
+        assertEquals("text/html", req.getHeader("CONTENT-TYPE").orElse(""));
+        assertEquals(List.of("text/html"), req.getHeaders().get("content-type"));
+    }
+
+    @Test
+    void getCookies_withLowercaseCookieHeader() {
+        var req = baseBuilder().setHeaders(Map.of("cookie", List.of("session=abc123"))).build();
+        assertEquals("abc123", req.getCookies().get("session"));
+    }
+
+    @Test
     void getHeader_missingKey_returnsEmpty() {
         var req = baseBuilder().build();
         assertTrue(req.getHeader("X-Nonexistent").isEmpty());
