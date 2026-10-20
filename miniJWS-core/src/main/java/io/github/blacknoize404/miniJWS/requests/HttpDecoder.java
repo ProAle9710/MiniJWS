@@ -14,6 +14,7 @@ public final class HttpDecoder {
     private static final int CR = 13;
     private static final int LF = 10;
     private static final int MAX_HEADER_LINE_LENGTH = 8_192;
+    private static final int MAX_HEADERS = 100;
     private static final int MAX_CHUNK_SIZE = 10 * 1024 * 1024;
     private static final int MAX_CONTENT_LENGTH = 50 * 1024 * 1024;
 
@@ -48,10 +49,12 @@ public final class HttpDecoder {
             boolean chunked = false;
             String lastKey = null;
 
+            int headerCount = 0;
             while (true) {
                 headerLine = readLine(reader);
                 if (headerLine == null) return Optional.empty();
                 if (headerLine.isEmpty()) break;
+                if (++headerCount > MAX_HEADERS) return Optional.empty();
 
                 if ((headerLine.charAt(0) == ' ' || headerLine.charAt(0) == '\t') && lastKey != null) {
                     var values = headers.get(lastKey);
