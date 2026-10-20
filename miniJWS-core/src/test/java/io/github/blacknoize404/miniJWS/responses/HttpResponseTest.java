@@ -93,6 +93,32 @@ class HttpResponseTest {
     }
 
     @Test
+    void builder_headerWithCrlf_throws() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().addHeader("X-Test", "ok\r\nInjected: 1"));
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().addHeader("X-Test\r\nInjected", "ok"));
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().addHeader("X-Test", List.of("ok", "bad\nvalue")));
+    }
+
+    @Test
+    void redirect_locationWithCrlf_throws() {
+        assertThrows(IllegalArgumentException.class, () ->
+            HttpResponse.redirect("/ok\r\nInjected: 1"));
+    }
+
+    @Test
+    void builder_cookieWithCrlfOrSemicolon_throws() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().setCookie("session", "a\r\nInjected: 1"));
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().setCookie("session", "a; Secure"));
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().setCookie("ses=sion", "abc"));
+    }
+
+    @Test
     void builder_setCookie_simple() {
         var res = new HttpResponse.Builder()
             .setCookie("session", "abc123")
