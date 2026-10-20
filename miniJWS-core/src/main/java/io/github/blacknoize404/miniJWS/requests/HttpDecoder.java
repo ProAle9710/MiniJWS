@@ -24,6 +24,10 @@ public final class HttpDecoder {
     }
 
     public static Optional<HttpRequest> decode(BufferedInputStream reader) {
+        return decode(reader, "unknown");
+    }
+
+    public static Optional<HttpRequest> decode(BufferedInputStream reader, String remoteAddress) {
         try {
             String requestLine = readLine(reader);
             if (requestLine == null || requestLine.isEmpty()) return Optional.empty();
@@ -99,6 +103,7 @@ public final class HttpDecoder {
                     .setHttpMethod(method)
                     .setUri(uri)
                     .setProtocolVersion(protocol)
+                    .setRemoteAddress(remoteAddress)
                     .setHeaders(headers);
 
             Optional<Map<String, String>> params = parseQueryParams(parts[1]);

@@ -16,11 +16,12 @@ public class HttpRequest {
     private final Map<String, String> parameters;
     private final Map<String, String> cookies;
     private final Optional<byte[]> body;
+    private final String remoteAddress;
 
     private HttpRequest(HttpMethod method, URI uri, String protocolVersion,
                         Map<String, List<String>> headers,
                         Map<String, String> parameters,
-                        Optional<byte[]> body) {
+                        Optional<byte[]> body, String remoteAddress) {
         this.httpMethod = method;
         this.uri = uri;
         this.protocolVersion = protocolVersion;
@@ -28,6 +29,7 @@ public class HttpRequest {
         this.parameters = parameters;
         this.cookies = parseCookies(headers);
         this.body = body;
+        this.remoteAddress = (remoteAddress == null || remoteAddress.isBlank()) ? "unknown" : remoteAddress;
     }
 
     public URI getUri() { return uri; }
@@ -37,6 +39,7 @@ public class HttpRequest {
     public Map<String, String> getCookies() { return cookies; }
     public String getProtocolVersion() { return protocolVersion; }
     public Optional<byte[]> getBody() { return body; }
+    public String getRemoteAddress() { return remoteAddress; }
 
     public Optional<String> getHeader(String name) {
         var values = headers.get(name);
@@ -154,6 +157,7 @@ public class HttpRequest {
         private Map<String, List<String>> headers = new HashMap<>();
         private Map<String, String> parameters = new HashMap<>();
         private Optional<byte[]> body = Optional.empty();
+        private String remoteAddress = "unknown";
 
         public Builder setHttpMethod(HttpMethod method) { this.httpMethod = method; return this; }
         public Builder setUri(URI uri) { this.uri = uri; return this; }
@@ -163,11 +167,12 @@ public class HttpRequest {
         public Builder setParameters(Map<String, String> params) { this.parameters = params; return this; }
         public Builder addParameter(String key, String value) { parameters.put(key, value); return this; }
         public Builder setBody(byte[] data) { this.body = Optional.ofNullable(data); return this; }
+        public Builder setRemoteAddress(String remoteAddress) { this.remoteAddress = remoteAddress; return this; }
 
         public HttpRequest build() {
             Objects.requireNonNull(httpMethod, "HTTP method must not be null");
             Objects.requireNonNull(uri, "URI must not be null");
-            return new HttpRequest(httpMethod, uri, protocolVersion, headers, parameters, body);
+            return new HttpRequest(httpMethod, uri, protocolVersion, headers, parameters, body, remoteAddress);
         }
     }
 

@@ -122,8 +122,11 @@ public final class HttpServer {
             var reader = new BufferedInputStream(in);
             int requests = 0;
 
+            String remoteAddress = s.getInetAddress() != null
+                    ? s.getInetAddress().getHostAddress() : "unknown";
+
             while (requests < MAX_KEEPALIVE_REQUESTS) {
-                Optional<HttpRequest> decoded = HttpDecoder.decode(reader);
+                Optional<HttpRequest> decoded = HttpDecoder.decode(reader, remoteAddress);
 
                 if (decoded.isEmpty()) break;
 
@@ -234,6 +237,7 @@ public final class HttpServer {
                         .setHttpMethod(original.getHttpMethod())
                         .setUri(original.getUri())
                         .setProtocolVersion(original.getProtocolVersion())
+                        .setRemoteAddress(original.getRemoteAddress())
                         .setHeaders(headersCopy)
                         .setParameters(merged)
                         .setBody(original.getBody().orElse(null))
