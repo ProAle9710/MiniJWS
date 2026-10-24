@@ -93,6 +93,16 @@ class HttpResponseTest {
     }
 
     @Test
+    void builder_headerWithCrlf_throws() {
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().addHeader("X-Test", "ok\r\nInjected: 1"));
+        assertThrows(IllegalArgumentException.class, () ->
+            HttpResponse.redirect("/ok\r\nInjected: 1"));
+        assertThrows(IllegalArgumentException.class, () ->
+            new HttpResponse.Builder().setCookie("session", "a\r\nInjected: 1"));
+    }
+
+    @Test
     void builder_setCookie_simple() {
         var res = new HttpResponse.Builder()
             .setCookie("session", "abc123")

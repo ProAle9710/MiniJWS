@@ -34,7 +34,8 @@ public final class HttpServer {
 
     public HttpServer(int port, int parallelism) throws IOException {
         this.port = port;
-        this.threadPool = Executors.newFixedThreadPool(parallelism);
+        // Virtual threads: parallelism se mantiene por compatibilidad, ya no limita el pool.
+        this.threadPool = Executors.newVirtualThreadPerTaskExecutor();
         this.socket = new ServerSocket(port);
     }
 

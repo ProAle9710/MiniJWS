@@ -104,6 +104,26 @@ class HttpDecoderTest {
     }
 
     @Test
+    void decode_invalidChunkSize_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\nZZZ\r\nHello\r\n0\r\n\r\n";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_truncatedChunk_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHel";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_headersAreCaseInsensitive() {
+        var raw = "GET / HTTP/1.1\r\nhost: example.com\r\n\r\n";
+        var req = HttpDecoder.decode(toStream(raw)).orElseThrow();
+        assertEquals("example.com", req.getHeader("Host").orElse(""));
+        assertEquals("example.com", req.getHeader("HOST").orElse(""));
+    }
+
+    @Test
     void decode_chunkedWithExtensions() {
         var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n\r\n5;ext=1\r\nHello\r\n0\r\n\r\n";
         var result = HttpDecoder.decode(toStream(raw));
