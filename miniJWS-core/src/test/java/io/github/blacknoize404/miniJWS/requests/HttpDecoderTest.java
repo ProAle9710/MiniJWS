@@ -36,6 +36,14 @@ class HttpDecoderTest {
     }
 
     @Test
+    void decode_lowercaseHeaders_areReadable() {
+        var raw = "GET / HTTP/1.1\r\nhost: example.com\r\naccept-encoding: gzip\r\n\r\n";
+        var req = HttpDecoder.decode(toStream(raw)).orElseThrow();
+        assertEquals("example.com", req.getHeader("Host").orElse(""));
+        assertEquals("gzip", req.getHeader("Accept-Encoding").orElse(""));
+    }
+
+    @Test
     void decode_withQueryParams() {
         var raw = "GET /search?q=hello&page=1 HTTP/1.1\r\nHost: local\r\n\r\n";
         var result = HttpDecoder.decode(toStream(raw));
