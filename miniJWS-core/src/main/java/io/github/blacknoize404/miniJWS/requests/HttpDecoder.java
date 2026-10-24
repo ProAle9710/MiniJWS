@@ -24,6 +24,10 @@ public final class HttpDecoder {
     }
 
     public static Optional<HttpRequest> decode(BufferedInputStream reader) {
+        return decode(reader, "unknown");
+    }
+
+    public static Optional<HttpRequest> decode(BufferedInputStream reader, String remoteAddress) {
         try {
             String requestLine = readLine(reader);
             if (requestLine == null || requestLine.isEmpty()) return Optional.empty();
@@ -99,6 +103,7 @@ public final class HttpDecoder {
                     .setHttpMethod(method)
                     .setUri(uri)
                     .setProtocolVersion(protocol)
+                    .setRemoteAddress(remoteAddress)
                     .setHeaders(headers);
 
             Optional<Map<String, String>> params = parseQueryParams(parts[1]);
@@ -141,7 +146,7 @@ public final class HttpDecoder {
         var body = new ByteArrayOutputStream();
         while (true) {
             String chunkSizeLine = readLine(in);
-            if (chunkSizeLine == null) break;
+            if (chunkSizeLine == null) throw new EOFException("Incomplete chunked body");
 
             int semi = chunkSizeLine.indexOf(';');
             String sizeStr = (semi == -1) ? chunkSizeLine.trim() : chunkSizeLine.substring(0, semi).trim();
@@ -150,17 +155,36 @@ public final class HttpDecoder {
             try {
                 size = Integer.parseInt(sizeStr, 16);
             } catch (NumberFormatException e) {
-                break;
+                throw new IOException("Invalid chunk size: " + sizeStr, e);
             }
 
-            if (size < 0 || size > MAX_CHUNK_SIZE) break;
-            if (size == 0) break;
+            if (size < 0 || size > MAX_CHUNK_SIZE) {
+                throw new IOException("Chunk size out of range: " + size);
+            }
+            if (size == 0) {
+                consumeTrailers(in);
+                break;
+            }
+            if (size > MAX_CONTENT_LENGTH - body.size()) {
+                throw new IOException("Chunked body exceeds max content length");
+            }
 
             byte[] chunk = readExact(in, size);
             body.write(chunk);
-            readLine(in);
+            String chunkEnd = readLine(in);
+            if (chunkEnd == null || !chunkEnd.isEmpty()) {
+                throw new IOException("Missing CRLF after chunk");
+            }
         }
         return body.size() > 0 ? Optional.of(body.toByteArray()) : Optional.empty();
+    }
+
+    private static void consumeTrailers(BufferedInputStream in) throws IOException {
+        while (true) {
+            String trailer = readLine(in);
+            if (trailer == null) throw new EOFException("Incomplete chunked trailers");
+            if (trailer.isEmpty()) return;
+        }
     }
 
     private static Optional<byte[]> readExactBody(BufferedInputStream in, int length) throws IOException {

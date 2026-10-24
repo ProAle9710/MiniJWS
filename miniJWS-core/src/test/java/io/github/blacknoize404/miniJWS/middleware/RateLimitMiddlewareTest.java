@@ -18,12 +18,27 @@ class RateLimitMiddlewareTest {
         new HttpResponse.Builder().setStatusCode(200).setBody("OK").build();
 
     private HttpRequest requestFromIp(String ip) {
+        var builder = new HttpRequest.Builder()
+            .setHttpMethod(HttpMethod.GET)
+            .setUri(URI.create("/test"))
+            .setProtocolVersion("HTTP/1.1");
+        if (ip != null) builder.setRemoteAddress(ip);
+        return builder.build();
+    }
+
+    private HttpRequest requestWithXff(String remote, String xff) {
         return new HttpRequest.Builder()
             .setHttpMethod(HttpMethod.GET)
             .setUri(URI.create("/test"))
             .setProtocolVersion("HTTP/1.1")
-            .setHeaders(ip != null ? Map.of("X-Forwarded-For", List.of(ip)) : Map.of())
+            .setRemoteAddress(remote)
+            .setHeaders(Map.of("X-Forwarded-For", List.of(xff)))
             .build();
+            .setHttpMethod(HttpMethod.GET)
+            .setUri(URI.create("/test"))
+            .setProtocolVersion("HTTP/1.1");
+        if (ip != null) builder.setRemoteAddress(ip);
+        return builder.build();
     }
 
     @Test
@@ -72,17 +87,44 @@ class RateLimitMiddlewareTest {
     }
 
     @Test
-    void run_usesXForwardedFor() {
-        var mw = new RateLimitMiddleware(2, 60);
-        var req = requestFromIp("10.0.0.6");
-        assertEquals(200, mw.run(req, okChain).getStatusCode());
-        assertEquals(200, mw.run(req, okChain).getStatusCode());
+    void run_ignoresXForwardedForByDefault() {
+        var mw = new RateLimitMiddleware(1, 60);
+        assertEquals(200, mw.run(requestWithXff("10.0.0.6", "1.1.1.1"), okChain).getStatusCode());
+        assertEquals(429, mw.run(requestWithXff("10.0.0.6", "2.2.2.2"), okChain).getStatusCode());
+        var a = new HttpRequest.Builder()
+            .setHttpMethod(HttpMethod.GET).setUri(URI.create("/test")).setProtocolVersion("HTTP/1.1")
+            .setRemoteAddress("10.0.0.6")
+            .setHeaders(Map.of("X-Forwarded-For", List.of("1.1.1.1"))).build();
+        var b = new HttpRequest.Builder()
+            .setHttpMethod(HttpMethod.GET).setUri(URI.create("/test")).setProtocolVersion("HTTP/1.1")
+            .setRemoteAddress("10.0.0.6")
+            .setHeaders(Map.of("X-Forwarded-For", List.of("2.2.2.2"))).build();
+        assertEquals(200, mw.run(a, okChain).getStatusCode());
+        assertEquals(429, mw.run(b, okChain).getStatusCode());
     }
 
     @Test
-    void run_fallbackToLocalhost() {
+    void run_usesXForwardedForWhenTrusted() {
+        var mw = new RateLimitMiddleware(1, 60, true);
+        assertEquals(200, mw.run(requestWithXff("10.0.0.7", "1.1.1.1"), okChain).getStatusCode());
+        assertEquals(200, mw.run(requestWithXff("10.0.0.7", "2.2.2.2"), okChain).getStatusCode());
+        var a = new HttpRequest.Builder()
+            .setHttpMethod(HttpMethod.GET).setUri(URI.create("/test")).setProtocolVersion("HTTP/1.1")
+            .setRemoteAddress("10.0.0.7")
+            .setHeaders(Map.of("X-Forwarded-For", List.of("1.1.1.1"))).build();
+        var b = new HttpRequest.Builder()
+            .setHttpMethod(HttpMethod.GET).setUri(URI.create("/test")).setProtocolVersion("HTTP/1.1")
+            .setRemoteAddress("10.0.0.7")
+            .setHeaders(Map.of("X-Forwarded-For", List.of("2.2.2.2"))).build();
+        assertEquals(200, mw.run(a, okChain).getStatusCode());
+        assertEquals(200, mw.run(b, okChain).getStatusCode());
+    }
+
+    @Test
+    void run_fallbackToUnknown() {
         var mw = new RateLimitMiddleware(5, 60);
         var req = requestFromIp(null);
+        assertEquals("unknown", req.getRemoteAddress());
         assertEquals(200, mw.run(req, okChain).getStatusCode());
     }
 }
