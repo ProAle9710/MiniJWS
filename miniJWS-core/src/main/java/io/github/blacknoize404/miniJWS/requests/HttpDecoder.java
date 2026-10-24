@@ -50,20 +50,16 @@ public final class HttpDecoder {
             int contentLength = -1;
             boolean contentLengthSet = false;
             boolean chunked = false;
-            String lastKey = null;
+            boolean transferEncodingSet = false;
 
             while (true) {
                 headerLine = readLine(reader);
                 if (headerLine == null) return Optional.empty();
                 if (headerLine.isEmpty()) break;
 
-                if ((headerLine.charAt(0) == ' ' || headerLine.charAt(0) == '\t') && lastKey != null) {
-                    var values = headers.get(lastKey);
-                    if (values != null && !values.isEmpty()) {
-                        int idx = values.size() - 1;
-                        values.set(idx, values.get(idx) + headerLine.trim());
-                    }
-                    continue;
+                // obs-fold (RFC 9112 §5.2): rechazar, no plegar
+                if (headerLine.charAt(0) == ' ' || headerLine.charAt(0) == '\t') {
+                    return Optional.empty();
                 }
 
                 int colon = headerLine.indexOf(':');
@@ -71,7 +67,6 @@ public final class HttpDecoder {
                 String key = headerLine.substring(0, colon).trim();
                 String value = headerLine.substring(colon + 1).trim();
                 headers.computeIfAbsent(key, k -> new ArrayList<>()).add(value);
-                lastKey = key;
 
                 if (key.equalsIgnoreCase("Content-Length")) {
                     if (contentLengthSet) {
@@ -87,10 +82,17 @@ public final class HttpDecoder {
                         return Optional.empty();
                     }
                 }
-                if (key.equalsIgnoreCase("Transfer-Encoding") && value.contains("chunked")) {
-                    chunked = true;
+                if (key.equalsIgnoreCase("Transfer-Encoding")) {
+                    if (transferEncodingSet) return Optional.empty();
+                    transferEncodingSet = true;
+                    if (value.toLowerCase(Locale.ROOT).contains("chunked")) {
+                        chunked = true;
+                    }
                 }
             }
+
+            // CL + TE a la vez: ambiguo, vector clásico de smuggling (RFC 9112 §6.1)
+            if (chunked && contentLengthSet) return Optional.empty();
 
             Optional<byte[]> body = Optional.empty();
             if (chunked) {

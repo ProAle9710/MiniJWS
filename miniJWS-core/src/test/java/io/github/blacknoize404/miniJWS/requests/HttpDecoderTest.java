@@ -151,12 +151,28 @@ class HttpDecoderTest {
     }
 
     @Test
-    void decode_foldedHeaderValue() {
+    void decode_foldedHeaderValue_returnsEmpty() {
         var raw = "GET / HTTP/1.1\r\nHost: local\r\nX-Folded: line1\r\n line2\r\n\r\n";
-        var result = HttpDecoder.decode(toStream(raw));
-        assertTrue(result.isPresent());
-        var req = result.get();
-        assertTrue(req.getHeader("X-Folded").orElse("").contains("line1line2"));
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_contentLengthAndChunked_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_duplicateTransferEncoding_returnsEmpty() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n";
+        assertFalse(HttpDecoder.decode(toStream(raw)).isPresent());
+    }
+
+    @Test
+    void decode_chunkedCaseInsensitive() {
+        var raw = "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: Chunked\r\n\r\n5\r\nHello\r\n0\r\n\r\n";
+        var req = HttpDecoder.decode(toStream(raw)).orElseThrow();
+        assertEquals("Hello", new String(req.getBody().orElseThrow(), StandardCharsets.UTF_8));
     }
 
     @Test
