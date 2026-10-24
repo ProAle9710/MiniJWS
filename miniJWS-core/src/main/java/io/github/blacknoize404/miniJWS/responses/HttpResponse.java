@@ -69,20 +69,47 @@ public class HttpResponse {
         }
 
         public Builder addHeader(String name, String value) {
+            validateHeader(name, value);
             headers.put(name, List.of(value));
             return this;
         }
 
         public Builder addHeader(String name, List<String> values) {
-            headers.put(name, values);
+            Objects.requireNonNull(values, "Header values must not be null");
+            values.forEach(v -> validateHeader(name, v));
+            headers.put(name, List.copyOf(values));
             return this;
         }
 
+        private static void validateHeader(String name, String value) {
+            if (name == null || name.isBlank() || name.contains(":")
+                    || name.indexOf('\r') >= 0 || name.indexOf('\n') >= 0) {
+                throw new IllegalArgumentException("Invalid header name");
+            }
+            if (value == null || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+                throw new IllegalArgumentException("Invalid header value for " + name);
+            }
+        }
+
+        private static void validateCookiePart(String part, String what) {
+            if (part == null || part.indexOf('\r') >= 0 || part.indexOf('\n') >= 0
+                    || part.indexOf(';') >= 0) {
+                throw new IllegalArgumentException("Invalid cookie " + what);
+            }
+        }
+
         public Builder setCookie(String name, String value) {
+            validateCookiePart(name, "name");
+            if (name.contains("=")) throw new IllegalArgumentException("Invalid cookie name");
+            validateCookiePart(value, "value");
             return addHeader("Set-Cookie", name + "=" + value);
         }
 
         public Builder setCookie(String name, String value, int maxAge, String path, boolean httpOnly) {
+            validateCookiePart(name, "name");
+            if (name.contains("=")) throw new IllegalArgumentException("Invalid cookie name");
+            validateCookiePart(value, "value");
+            if (path != null) validateCookiePart(path, "path");
             var sb = new StringBuilder();
             sb.append(name).append("=").append(value);
             if (maxAge > 0) sb.append("; Max-Age=").append(maxAge);

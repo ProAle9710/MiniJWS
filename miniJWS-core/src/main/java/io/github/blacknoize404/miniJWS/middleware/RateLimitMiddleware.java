@@ -19,11 +19,17 @@ public final class RateLimitMiddleware implements Middleware {
     private final Duration window;
     private final ConcurrentHashMap<String, Queue<Instant>> requests = new ConcurrentHashMap<>();
     private final AtomicInteger totalEntries = new AtomicInteger(0);
+    private final boolean trustForwardedHeaders;
     private static final int CLEANUP_THRESHOLD = 10_000;
 
     public RateLimitMiddleware(int maxRequests, int windowSeconds) {
+        this(maxRequests, windowSeconds, false);
+    }
+
+    public RateLimitMiddleware(int maxRequests, int windowSeconds, boolean trustForwardedHeaders) {
         this.maxRequests = maxRequests;
         this.window = Duration.ofSeconds(windowSeconds);
+        this.trustForwardedHeaders = trustForwardedHeaders;
     }
 
     @Override
@@ -79,11 +85,15 @@ public final class RateLimitMiddleware implements Middleware {
         totalEntries.addAndGet(-removed);
     }
 
-    private static String extractClientIp(HttpRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For").orElse("");
-        if (!forwarded.isEmpty()) {
-            return forwarded.split(",")[0].trim();
+    private String extractClientIp(HttpRequest request) {
+        if (trustForwardedHeaders) {
+            String forwarded = request.getHeader("X-Forwarded-For").orElse("");
+            if (!forwarded.isEmpty()) {
+                return forwarded.split(",")[0].trim();
+            }
+            String realIp = request.getHeader("X-Real-IP").orElse("");
+            if (!realIp.isEmpty()) return realIp.trim();
         }
-        return request.getHeader("X-Real-IP").orElse("127.0.0.1");
+        return request.getRemoteAddress();
     }
 }
