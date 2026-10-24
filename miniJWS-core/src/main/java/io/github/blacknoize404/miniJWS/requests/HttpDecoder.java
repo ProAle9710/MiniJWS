@@ -25,6 +25,10 @@ public final class HttpDecoder {
     }
 
     public static Optional<HttpRequest> decode(BufferedInputStream reader) {
+        return decode(reader, "unknown");
+    }
+
+    public static Optional<HttpRequest> decode(BufferedInputStream reader, String remoteAddress) {
         try {
             String requestLine = readLine(reader);
             if (requestLine == null || requestLine.isEmpty()) return Optional.empty();
@@ -47,7 +51,7 @@ public final class HttpDecoder {
             int contentLength = -1;
             boolean contentLengthSet = false;
             boolean chunked = false;
-            String lastKey = null;
+            boolean transferEncodingSet = false;
 
             int headerCount = 0;
             while (true) {
@@ -56,13 +60,9 @@ public final class HttpDecoder {
                 if (headerLine.isEmpty()) break;
                 if (++headerCount > MAX_HEADERS) return Optional.empty();
 
-                if ((headerLine.charAt(0) == ' ' || headerLine.charAt(0) == '\t') && lastKey != null) {
-                    var values = headers.get(lastKey);
-                    if (values != null && !values.isEmpty()) {
-                        int idx = values.size() - 1;
-                        values.set(idx, values.get(idx) + headerLine.trim());
-                    }
-                    continue;
+                // obs-fold (RFC 9112 §5.2): rechazar, no plegar
+                if (headerLine.charAt(0) == ' ' || headerLine.charAt(0) == '\t') {
+                    return Optional.empty();
                 }
 
                 int colon = headerLine.indexOf(':');
@@ -70,7 +70,6 @@ public final class HttpDecoder {
                 String key = headerLine.substring(0, colon).trim();
                 String value = headerLine.substring(colon + 1).trim();
                 headers.computeIfAbsent(key, k -> new ArrayList<>()).add(value);
-                lastKey = key;
 
                 if (key.equalsIgnoreCase("Content-Length")) {
                     if (contentLengthSet) {
@@ -86,10 +85,17 @@ public final class HttpDecoder {
                         return Optional.empty();
                     }
                 }
-                if (key.equalsIgnoreCase("Transfer-Encoding") && value.contains("chunked")) {
-                    chunked = true;
+                if (key.equalsIgnoreCase("Transfer-Encoding")) {
+                    if (transferEncodingSet) return Optional.empty();
+                    transferEncodingSet = true;
+                    if (value.toLowerCase(Locale.ROOT).contains("chunked")) {
+                        chunked = true;
+                    }
                 }
             }
+
+            // CL + TE a la vez: ambiguo, vector clásico de smuggling (RFC 9112 §6.1)
+            if (chunked && contentLengthSet) return Optional.empty();
 
             Optional<byte[]> body = Optional.empty();
             if (chunked) {
@@ -102,6 +108,7 @@ public final class HttpDecoder {
                     .setHttpMethod(method)
                     .setUri(uri)
                     .setProtocolVersion(protocol)
+                    .setRemoteAddress(remoteAddress)
                     .setHeaders(headers);
 
             Optional<Map<String, String>> params = parseQueryParams(parts[1]);
@@ -144,7 +151,7 @@ public final class HttpDecoder {
         var body = new ByteArrayOutputStream();
         while (true) {
             String chunkSizeLine = readLine(in);
-            if (chunkSizeLine == null) break;
+            if (chunkSizeLine == null) throw new EOFException("Incomplete chunked body");
 
             int semi = chunkSizeLine.indexOf(';');
             String sizeStr = (semi == -1) ? chunkSizeLine.trim() : chunkSizeLine.substring(0, semi).trim();
@@ -153,17 +160,36 @@ public final class HttpDecoder {
             try {
                 size = Integer.parseInt(sizeStr, 16);
             } catch (NumberFormatException e) {
-                break;
+                throw new IOException("Invalid chunk size: " + sizeStr, e);
             }
 
-            if (size < 0 || size > MAX_CHUNK_SIZE) break;
-            if (size == 0) break;
+            if (size < 0 || size > MAX_CHUNK_SIZE) {
+                throw new IOException("Chunk size out of range: " + size);
+            }
+            if (size == 0) {
+                consumeTrailers(in);
+                break;
+            }
+            if (size > MAX_CONTENT_LENGTH - body.size()) {
+                throw new IOException("Chunked body exceeds max content length");
+            }
 
             byte[] chunk = readExact(in, size);
             body.write(chunk);
-            readLine(in);
+            String chunkEnd = readLine(in);
+            if (chunkEnd == null || !chunkEnd.isEmpty()) {
+                throw new IOException("Missing CRLF after chunk");
+            }
         }
         return body.size() > 0 ? Optional.of(body.toByteArray()) : Optional.empty();
+    }
+
+    private static void consumeTrailers(BufferedInputStream in) throws IOException {
+        while (true) {
+            String trailer = readLine(in);
+            if (trailer == null) throw new EOFException("Incomplete chunked trailers");
+            if (trailer.isEmpty()) return;
+        }
     }
 
     private static Optional<byte[]> readExactBody(BufferedInputStream in, int length) throws IOException {

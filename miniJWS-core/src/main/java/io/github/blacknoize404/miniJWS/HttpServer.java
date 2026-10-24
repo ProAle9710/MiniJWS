@@ -36,11 +36,8 @@ public final class HttpServer {
 
     public HttpServer(int port, int parallelism) throws IOException {
         this.port = port;
-        this.threadPool = new ThreadPoolExecutor(
-                parallelism, parallelism,
-                0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(MAX_PENDING_CONNECTIONS),
-                new ThreadPoolExecutor.AbortPolicy());
+        // Virtual threads: parallelism se mantiene por compatibilidad, ya no limita el pool.
+        this.threadPool = Executors.newVirtualThreadPerTaskExecutor();
         this.socket = new ServerSocket(port);
     }
 
@@ -133,8 +130,11 @@ public final class HttpServer {
             var reader = new BufferedInputStream(in);
             int requests = 0;
 
+            String remoteAddress = s.getInetAddress() != null
+                    ? s.getInetAddress().getHostAddress() : "unknown";
+
             while (requests < MAX_KEEPALIVE_REQUESTS) {
-                Optional<HttpRequest> decoded = HttpDecoder.decode(reader);
+                Optional<HttpRequest> decoded = HttpDecoder.decode(reader, remoteAddress);
 
                 if (decoded.isEmpty()) break;
 
@@ -245,6 +245,7 @@ public final class HttpServer {
                         .setHttpMethod(original.getHttpMethod())
                         .setUri(original.getUri())
                         .setProtocolVersion(original.getProtocolVersion())
+                        .setRemoteAddress(original.getRemoteAddress())
                         .setHeaders(headersCopy)
                         .setParameters(merged)
                         .setBody(original.getBody().orElse(null))
